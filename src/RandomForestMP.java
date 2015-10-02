@@ -1,7 +1,9 @@
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.Function;
+import org.apache.spark.api.java.function.PairFunction;
 import org.apache.spark.mllib.classification.SVMModel;
 import org.apache.spark.mllib.classification.SVMWithSGD;
 import org.apache.spark.mllib.linalg.Vector;
@@ -9,12 +11,40 @@ import org.apache.spark.mllib.linalg.Vectors;
 import org.apache.spark.mllib.regression.LabeledPoint;
 import org.apache.spark.mllib.tree.model.RandomForestModel;
 import org.apache.spark.mllib.tree.RandomForest;
-
+import scala.Tuple2;
 
 import java.util.HashMap;
 import java.util.regex.Pattern;
 
 public final class RandomForestMP {
+
+    // TODO
+    private static class ParsePoint implements Function<String, Vector> {
+        private static final Pattern SPACE = Pattern.compile(",");
+
+        public Vector call(String line) {
+            String[] tok = SPACE.split(line);
+            double[] point = new double[tok.length-1];
+            for (int i = 0; i < tok.length - 1; ++i) {
+                point[i] = Double.parseDouble(tok[i]);
+            }
+            return Vectors.dense(point);
+        }
+    }
+    private static class DataToPoint implements Function<String, LabeledPoint> {
+        private static final Pattern SPACE = Pattern.compile(",");
+
+        public LabeledPoint call(String line) throws Exception {
+            String[] tok = SPACE.split(line);
+            double label = Double.parseDouble(tok[tok.length-1]);
+            double[] point = new double[tok.length-1];
+            for (int i = 0; i < tok.length - 1; ++i) {
+                point[i] = Double.parseDouble(tok[i]);
+            }
+            return new LabeledPoint(label, Vectors.dense(point));
+        }
+    }
+    // End of TODO
 
     public static void main(String[] args) {
         if (args.length < 3) {
@@ -39,7 +69,26 @@ public final class RandomForestMP {
         Integer maxBins = 32;
         Integer seed = 12345;
 
-		// TODO
+        // TODO
+        JavaRDD<LabeledPoint> train = sc.textFile(training_data_path).map(new DataToPoint());
+        JavaRDD<Vector> test = sc.textFile(test_data_path).map(new ParsePoint());
+
+        model = RandomForest.trainClassifier(train,
+                                             numClasses,
+                                             categoricalFeaturesInfo,
+                                             numTrees,
+                                             featureSubsetStrategy,
+                                             impurity,
+                                             maxDepth,
+                                             maxBins,
+                                             seed);
+        /*JavaPairRDD<Double,Double> predictionAndLabel = 
+            test.mapToPair(new PairFunction<LabeledPoint, Double, Double>() {
+                public Tuple2<Double, Double> call(LabeledPoint p) {
+                    return new Tuple2<Double, Double>(model.predict(p.features()), p.label());
+                }
+            });*/
+        // End of TODO
 
         JavaRDD<LabeledPoint> results = test.map(new Function<Vector, LabeledPoint>() {
             public LabeledPoint call(Vector points) {
